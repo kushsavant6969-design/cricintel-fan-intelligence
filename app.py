@@ -839,19 +839,32 @@ def render_membership_tab(df: pd.DataFrame, club_name: str):
 
     # ── Journey Funnel ────────────────────────────────────────────────────────
     st.markdown("#### Membership Journey Funnel")
-    stage_labels = {
-        1: "Stage 1 - No Membership, Low Engagement",
-        2: "Stage 2 - No Membership, Active",
-        3: "Stage 3 - Associate Member",
-        4: "Stage 4 - Full / Life Member",
-        5: "Stage 5 - Surrey & England Member",
-    }
-    stage_vc = df["Journey_Stage"].value_counts().sort_index().reset_index()
-    stage_vc.columns = ["Stage", "Count"]
-    stage_vc["Label"] = stage_vc["Stage"].map(stage_labels)
+    # Always render all 5 stages; missing stages get Count = 0
+    _all_stages = [
+        (1, "Stage 1 - No Membership, Low Engagement"),
+        (2, "Stage 2 - Associate Member"),
+        (3, "Stage 3 - Associate, High Engagement"),
+        (4, "Stage 4 - Full / Life Member"),
+        (5, "Stage 5 - Surrey & England Dual Member"),
+    ]
+    _stage_counts = df["Journey_Stage"].value_counts().to_dict()
+    funnel_df = pd.DataFrame([
+        {"Stage": s, "Label": lbl, "Count": _stage_counts.get(s, 0)}
+        for s, lbl in _all_stages
+    ])
+    # Percentages relative to Stage 1 (top of funnel) — never exceed 100%
+    _s1 = funnel_df.loc[funnel_df["Stage"] == 1, "Count"].values[0]
+    if _s1 > 0:
+        funnel_df["text"] = funnel_df["Count"].apply(
+            lambda c: f"{int(c):,} ({min(c/_s1*100, 100):.0f}%)"
+        )
+    else:
+        funnel_df["text"] = funnel_df["Count"].apply(lambda c: f"{int(c):,}")
     fig = go.Figure(go.Funnel(
-        y=stage_vc["Label"], x=stage_vc["Count"],
-        textinfo="value+percent initial",
+        y=funnel_df["Label"],
+        x=funnel_df["Count"],
+        text=funnel_df["text"],
+        textinfo="text",
         marker_color=[PRIMARY, "#3A7020", "#5A9030", ACCENT, "#E8C060"],
     ))
     fig.update_layout(**dark_layout(title="Fan Journey Funnel (Stage 1 to 5)", title_font_color=ACCENT))
@@ -983,25 +996,28 @@ def render_sponsorship_tab(df: pd.DataFrame, club_name: str):
 
     # ── Sponsor Category Recommendations ─────────────────────────────────────
     st.markdown("#### Top Sponsor Category Recommendations")
-    thresholds = [
-        (pitch_score >= 70, "HIGH", "#27AE60", "#0A2A0A"),
-        (pitch_score >= 45, "MED",  ACCENT,    "#2A1F00"),
-        (True,              "LOW",  ORANGE,    "#2A1000"),
-    ]
 
-    def fit_rating(idx):
+    def _fit_rating(idx):
         if idx < 2:   return "HIGH", "#27AE60", "#0A2A0A"
         elif idx < 4: return "MED",  ACCENT,    "#2A1F00"
         else:         return "LOW",  ORANGE,    "#2A1000"
 
-    cat_cols = st.columns(len(SPONSOR_CATEGORIES), gap="small")
-    for i, cat in enumerate(SPONSOR_CATEGORIES):
-        fit, col, bg = fit_rating(i)
-        with cat_cols[i]:
+    # Filter out any None/empty entries before rendering
+    valid_cats = [
+        c for c in SPONSOR_CATEGORIES
+        if c is not None
+        and str(c.get("category", "")).strip() not in ("", "nan", "None")
+    ]
+
+    cat_cols = st.columns(len(valid_cats), gap="small")
+    for col_obj, (i, cat) in zip(cat_cols, enumerate(valid_cats)):
+        fit, fit_col, bg = _fit_rating(i)
+        with col_obj:
             st.markdown(
-                f'<div style="background:{bg};border:1px solid {col};border-radius:8px;padding:14px;height:100%">'
-                f'<div style="color:{col};font-weight:700;font-size:12px;margin-bottom:6px">'
-                f'{cat["category"]} &nbsp;<span style="font-size:10px;background:{col}22;padding:2px 6px;border-radius:3px">{fit}</span></div>'
+                f'<div style="background:{bg};border:1px solid {fit_col};border-radius:8px;padding:14px;height:100%">'
+                f'<div style="color:{fit_col};font-weight:700;font-size:12px;margin-bottom:6px">'
+                f'{cat["category"]} &nbsp;'
+                f'<span style="font-size:10px;background:{fit_col}22;padding:2px 6px;border-radius:3px">{fit}</span></div>'
                 f'<div style="color:#888;font-size:10px;margin-bottom:6px">{cat["brands"]}</div>'
                 f'<div style="color:#AAA;font-size:10px">{cat["rationale"]}</div>'
                 f'</div>',
@@ -1082,8 +1098,13 @@ def render_match_tab(df: pd.DataFrame, club_name: str):
 
     # ── Attendance Gap Analysis ────────────────────────────────────────────────
     st.markdown("#### Attendance Gap — High Engagement, Low Attendance (Upsell Targets)")
+    HIGH_ENG_THRESHOLD = 25
+    LOW_ATT_THRESHOLD  = 5
     if "Attendance_Frequency" in df.columns:
-        att_gap = df[(df["Engagement_Score"] > 60) & (df["Attendance_Frequency"] < 5)].copy()
+        att_gap = df[
+            (df["Engagement_Score"] > HIGH_ENG_THRESHOLD) &
+            (df["Attendance_Frequency"] < LOW_ATT_THRESHOLD)
+        ].copy()
         st.markdown(
             f'<div style="background:#0A1520;border:1px solid {BLUE};border-radius:8px;padding:14px;margin-bottom:16px">'
             f'<span style="color:{BLUE};font-weight:700">{len(att_gap):,} fans</span>'
@@ -1135,7 +1156,7 @@ def render_match_tab(df: pd.DataFrame, club_name: str):
 
     # ── Revenue Opportunity Callout ───────────────────────────────────────────
     if "Attendance_Frequency" in df.columns:
-        att_gap_cnt = len(df[(df["Engagement_Score"] > 60) & (df["Attendance_Frequency"] < 5)])
+        att_gap_cnt = len(df[(df["Engagement_Score"] > 25) & (df["Attendance_Frequency"] < 5)])
         conv_pct5   = int(att_gap_cnt * 0.10)
         rev_est     = conv_pct5 * 35  # avg ticket ~£35
         st.markdown(
@@ -1318,7 +1339,7 @@ def generate_pdf(df: pd.DataFrame, club_name: str, county_format: str) -> bytes:
     pdf.add_page()
     pdf.section_title("Match Intelligence Summary")
     if "Attendance_Frequency" in df.columns:
-        att_gap_cnt = len(df[(df["Engagement_Score"] > 60) & (df["Attendance_Frequency"] < 5)])
+        att_gap_cnt = len(df[(df["Engagement_Score"] > 25) & (df["Attendance_Frequency"] < 5)])
         pdf.kv_row("High Eng / Low Attendance (Upsell Targets)", f"{att_gap_cnt:,}")
         pdf.kv_row("Avg Attendance Frequency",                    f"{df['Attendance_Frequency'].mean():.1f} matches/season")
     if "Match_Type_Preference" in df.columns:
