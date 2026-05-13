@@ -1007,22 +1007,29 @@ def render_sponsorship_tab(df: pd.DataFrame, club_name: str):
         c for c in SPONSOR_CATEGORIES
         if c is not None
         and str(c.get("category", "")).strip() not in ("", "nan", "None")
+        and str(c.get("brands",   "")).strip() not in ("", "nan", "None")
+        and str(c.get("rationale","")).strip() not in ("", "nan", "None")
     ]
 
-    cat_cols = st.columns(len(valid_cats), gap="small")
-    for col_obj, (i, cat) in zip(cat_cols, enumerate(valid_cats)):
-        fit, fit_col, bg = _fit_rating(i)
-        with col_obj:
-            st.markdown(
-                f'<div style="background:{bg};border:1px solid {fit_col};border-radius:8px;padding:14px;height:100%">'
-                f'<div style="color:{fit_col};font-weight:700;font-size:12px;margin-bottom:6px">'
-                f'{cat["category"]} &nbsp;'
-                f'<span style="font-size:10px;background:{fit_col}22;padding:2px 6px;border-radius:3px">{fit}</span></div>'
-                f'<div style="color:#888;font-size:10px;margin-bottom:6px">{cat["brands"]}</div>'
-                f'<div style="color:#AAA;font-size:10px">{cat["rationale"]}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+    if valid_cats:
+        cat_cols = st.columns(len(valid_cats), gap="small")
+        for i in range(len(valid_cats)):
+            cat = valid_cats[i]
+            fit, fit_col, bg = _fit_rating(i)
+            _cat_name  = str(cat.get("category",  "") or "").strip()
+            _brands    = str(cat.get("brands",    "") or "").strip()
+            _rationale = str(cat.get("rationale", "") or "").strip()
+            with cat_cols[i]:
+                st.markdown(
+                    f'<div style="background:{bg};border:1px solid {fit_col};border-radius:8px;padding:14px;height:100%">'
+                    f'<div style="color:{fit_col};font-weight:700;font-size:12px;margin-bottom:6px">'
+                    f'{_cat_name} &nbsp;'
+                    f'<span style="font-size:10px;background:{fit_col}22;padding:2px 6px;border-radius:3px">{fit}</span></div>'
+                    f'<div style="color:#888;font-size:10px;margin-bottom:6px">{_brands}</div>'
+                    f'<div style="color:#AAA;font-size:10px">{_rationale}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
     # ── Sponsorship Deck PDF Download ─────────────────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1098,12 +1105,12 @@ def render_match_tab(df: pd.DataFrame, club_name: str):
 
     # ── Attendance Gap Analysis ────────────────────────────────────────────────
     st.markdown("#### Attendance Gap — High Engagement, Low Attendance (Upsell Targets)")
-    HIGH_ENG_THRESHOLD = 25
-    LOW_ATT_THRESHOLD  = 5
+    HIGH_ENG = df["Engagement_Score"].quantile(0.4)
+    LOW_ATT  = 6
     if "Attendance_Frequency" in df.columns:
         att_gap = df[
-            (df["Engagement_Score"] > HIGH_ENG_THRESHOLD) &
-            (df["Attendance_Frequency"] < LOW_ATT_THRESHOLD)
+            (df["Engagement_Score"] > HIGH_ENG) &
+            (df["Attendance_Frequency"] < LOW_ATT)
         ].copy()
         st.markdown(
             f'<div style="background:#0A1520;border:1px solid {BLUE};border-radius:8px;padding:14px;margin-bottom:16px">'
@@ -1156,13 +1163,13 @@ def render_match_tab(df: pd.DataFrame, club_name: str):
 
     # ── Revenue Opportunity Callout ───────────────────────────────────────────
     if "Attendance_Frequency" in df.columns:
-        att_gap_cnt = len(df[(df["Engagement_Score"] > 25) & (df["Attendance_Frequency"] < 5)])
-        conv_pct5   = int(att_gap_cnt * 0.10)
-        rev_est     = conv_pct5 * 35  # avg ticket ~£35
+        high_potential_count = len(df[df["Segment"] == "High Potential"])
+        conv_10pct           = int(high_potential_count * 0.10)
+        rev_est              = conv_10pct * 35  # avg ticket ~£35
         st.markdown(
             f'<div style="background:#0F2A06;border:1px solid {ACCENT};border-radius:8px;padding:16px;margin-top:12px">'
             f'<span style="color:{ACCENT};font-weight:700">Revenue Opportunity:</span> '
-            f'<span style="color:#CCC">Converting 10% of High Potential fans ({conv_pct5:,} fans) to matchday attendance = '
+            f'<span style="color:#CCC">Converting 10% of High Potential fans ({high_potential_count:,} fans) to matchday attendance = '
             f'<b style="color:{ACCENT}">~GBP{rev_est:,.0f}</b> additional per fixture.</span>'
             f'</div>', unsafe_allow_html=True
         )
@@ -1339,7 +1346,8 @@ def generate_pdf(df: pd.DataFrame, club_name: str, county_format: str) -> bytes:
     pdf.add_page()
     pdf.section_title("Match Intelligence Summary")
     if "Attendance_Frequency" in df.columns:
-        att_gap_cnt = len(df[(df["Engagement_Score"] > 25) & (df["Attendance_Frequency"] < 5)])
+        _high_eng = df["Engagement_Score"].quantile(0.4)
+        att_gap_cnt = len(df[(df["Engagement_Score"] > _high_eng) & (df["Attendance_Frequency"] < 6)])
         pdf.kv_row("High Eng / Low Attendance (Upsell Targets)", f"{att_gap_cnt:,}")
         pdf.kv_row("Avg Attendance Frequency",                    f"{df['Attendance_Frequency'].mean():.1f} matches/season")
     if "Match_Type_Preference" in df.columns:
@@ -1498,7 +1506,7 @@ def render_report_tab(df: pd.DataFrame, club_name: str, county_format: str, extr
                         fig = px.scatter(corr_df, x=col, y="Composite_Score",
                                          color_discrete_sequence=[ACCENT],
                                          title=f"{col} vs Composite Score",
-                                         trendline="ols" if len(corr_df) > 10 else None)
+                                         trendline=None)
                         fig.update_layout(**dark_layout(title_font_color=ACCENT))
                         st.plotly_chart(fig, use_container_width=True, key=f"custom_scatter_{col}")
                 else:
