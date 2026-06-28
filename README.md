@@ -1,30 +1,30 @@
-# CricIntel Fan Intelligence
+# FanIQ
 
-Cricket fan segmentation and intelligence platform for county cricket clubs.
+Sport-agnostic fan segmentation and campaign intelligence platform.
 
-## Features
+Upload any fan database CSV. FanIQ auto-maps columns, scores every fan across five commercial dimensions, and generates ready-to-execute campaign briefs per segment.
 
-- **Upload & Configure** — CSV upload with hybrid schema detection, column mapping, club name/format config
-- **Fan Dashboard** — 9 charts, 5 hero metrics, segment insights cards, top 20 fans table
-- **Membership Intelligence** — tier breakdown, LTV analysis, renewal risk, upgrade opportunity funnel
-- **Sponsorship Intelligence** — pitch score, demographic breakdown, sponsor category recommendations, PDF deck
-- **Match Intelligence** — matchday revenue by format, attendance gap analysis, hospitality/corporate upsell
-- **Report** — PDF report, CSV downloads, custom metrics explorer
+## Tabs
+
+- **Fan Dashboard** — Five score engine, segment donut, journey funnel, LTV distribution, top 10 tables
+- **Campaign Intelligence** — Auto-generated campaign brief per segment with channel, offer, timing, and conversion estimate. PDF export.
+- **Audience Story** — Narrative fanbase report designed for client presentations. PDF export.
+- **Sponsorship Intelligence** — Pitch score, demographic breakdown, sponsor category recommendations. PDF export.
+- **Player Influence** — Player commercial influence ranking (unlocks when Favourite_Player column present)
 
 ## Scoring Engine
 
-Five scores (0–100) computed per fan:
+Five scores (0–100, percentile-calibrated) computed per fan:
 
-| Score | Key Inputs |
+| Score | Inputs |
 |---|---|
-| Engagement | Email click rate, InApp click rate, Article views, App recency, Attendance |
-| Commercial | Total Revenue, Purchase counts, Recency, Membership tier weight |
-| Loyalty | Tenure, Membership tier, Sustained engagement, Attendance |
-| Churn Risk | Days since purchase/app/email, Engagement inverse — percentile-calibrated |
-| Conversion | Email + InApp open rates, Membership gap from Surrey & England tier |
+| Engagement | Engagement_Score column + Last_Attended recency |
+| Commercial | Spend, Tickets_Purchased, Membership_Type |
+| Loyalty | Last_Attended, Membership_Type, Tickets_Purchased |
+| Churn Risk | Days since attendance, engagement inverse, spend inverse |
+| Conversion Probability | Composite of Engagement + Commercial + (100 - Churn) |
 
-**Segments:** Loyal Members · High Potential · Win Back · Dormant · Casual  
-**Journey Stages:** 1 (No Membership, Low Engagement) → 5 (Surrey & England Member)
+**Segments:** VIP · High Potential · Regular · Win Back · Dormant
 
 ## Setup
 
@@ -35,10 +35,12 @@ streamlit run app.py
 
 ## Sample Data
 
+Download from the upload screen or generate via:
+
 ```bash
-python generate_sample.py   # creates cricintel_fan_sample.csv (500 rows)
+python generate_sample.py   # creates faniq_sample.csv (300 rows)
 ```
 
-## Deployment (Render)
+## Deployment
 
 Configured via `render.yaml`. Push to GitHub and connect to Render.

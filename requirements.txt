@@ -3,4 +3,4 @@ pandas>=2.0.0
 plotly>=5.17.0
 fpdf2>=2.7.9
 numpy>=1.24.0
-statsmodels>=0.14.0
+rapidfuzz>=3.0.0

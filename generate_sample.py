@@ -1,167 +1,118 @@
-"""Standalone script — run once to generate cricintel_fan_sample.csv"""
+"""Generate sample CSV for FanIQ — 300 fans, sport-agnostic."""
 import pandas as pd
 import numpy as np
 from datetime import date, timedelta
 import random
 
-PLAYERS = [
-    "Rory Burns", "Jamie Overton", "Ben Foakes", "Sam Curran",
-    "Jordan Clark", "Dan Worrall", "Gus Atkinson", "Oli Pope",
-    "Will Jacks", "Jason Roy",
+FOOTBALL_PLAYERS = [
+    "Marcus Rashford", "Bukayo Saka", "Harry Kane", "Jude Bellingham",
+    "Erling Haaland", "Mohamed Salah", "Virgil van Dijk", "Trent Alexander-Arnold",
 ]
+CRICKET_PLAYERS = [
+    "Virat Kohli", "Ben Stokes", "Joe Root", "Babar Azam",
+    "Pat Cummins", "Rohit Sharma", "Steve Smith", "Jasprit Bumrah",
+]
+ALL_PLAYERS = FOOTBALL_PLAYERS + CRICKET_PLAYERS
 
-MEMBERSHIP_ORDER = ["None", "Associate", "Full Member", "Life Member", "Surrey & England"]
+MEMBERSHIP_TYPES = ["None", "Bronze", "Silver", "Gold", "Platinum"]
+CHANNELS = ["Email", "SMS", "Push Notification", "Social", "Direct Mail"]
+COUNTRIES = [
+    "England", "India", "Australia", "Pakistan", "USA",
+    "Nigeria", "South Africa", "Germany", "Spain", "Canada",
+    "Bangladesh", "Sri Lanka", "New Zealand", "UAE", "Kenya",
+]
+COUNTRY_WEIGHTS = [0.22, 0.15, 0.10, 0.08, 0.07, 0.05, 0.05, 0.04, 0.04, 0.04,
+                   0.04, 0.03, 0.03, 0.03, 0.03]
 
-TODAY = date(2026, 5, 6)
+TODAY = date(2026, 6, 28)
 
 
-def generate_sample_data(n: int = 500) -> pd.DataFrame:
+def generate_sample_data(n: int = 300) -> pd.DataFrame:
     rng = np.random.default_rng(42)
     random.seed(42)
 
     fan_ids = [f"FAN{i:04d}" for i in range(1, n + 1)]
-    ages = np.clip(rng.normal(45, 15, n).astype(int), 6, 80)
-    genders = rng.choice(["Male", "Female", "Non-binary"], n, p=[0.65, 0.25, 0.10])
-    counties = rng.choice(
-        ["England", "Surrey", "Kent", "Yorkshire", "Lancashire", "Middlesex", "Warwickshire", "Other"],
-        n, p=[0.20, 0.25, 0.10, 0.10, 0.10, 0.10, 0.08, 0.07],
-    )
-    membership_cats = rng.choice(
-        MEMBERSHIP_ORDER, n, p=[0.30, 0.25, 0.25, 0.12, 0.08]
-    )
-    fan_types = rng.choice(["Avid", "Casual", "Family", "Corporate"], n, p=[0.30, 0.35, 0.25, 0.10])
-    has_app = rng.choice(["Yes", "No"], n, p=[0.55, 0.45])
+    ages = np.clip(rng.normal(34, 13, n).astype(int), 16, 75)
+    genders = rng.choice(["Male", "Female", "Non-binary"], n, p=[0.55, 0.38, 0.07])
+    countries = rng.choice(COUNTRIES, n, p=COUNTRY_WEIGHTS)
 
-    # Email
-    email_campaigns = rng.integers(5, 50, n)
-    open_r = rng.uniform(0.10, 0.70, n)
-    click_r = open_r * rng.uniform(0.10, 0.40, n)
-    email_opens = (email_campaigns * open_r).astype(int)
-    email_clicks = (email_campaigns * click_r).astype(int)
+    mem_types = rng.choice(MEMBERSHIP_TYPES, n, p=[0.28, 0.22, 0.22, 0.18, 0.10])
+    mem_order = {"None": 0, "Bronze": 1, "Silver": 2, "Gold": 3, "Platinum": 4}
+    mem_rank = np.array([mem_order[m] for m in mem_types])
 
-    # InApp (only if HAS_APP == Yes)
-    inapp_campaigns = np.where(has_app == "Yes", rng.integers(3, 30, n), 0)
-    inapp_or = rng.uniform(0.20, 0.80, n)
-    inapp_cr = inapp_or * rng.uniform(0.10, 0.50, n)
-    inapp_opens = np.where(has_app == "Yes", (inapp_campaigns * inapp_or).astype(int), 0)
-    inapp_clicks = np.where(has_app == "Yes", (inapp_campaigns * inapp_cr).astype(int), 0)
+    # Last attended — higher tier = more recent
+    last_attended = []
+    for m in mem_types:
+        if m == "None":
+            offset = random.randint(300, 900)
+        elif m == "Bronze":
+            offset = random.randint(90, 400)
+        elif m == "Silver":
+            offset = random.randint(30, 200)
+        elif m == "Gold":
+            offset = random.randint(7, 90)
+        else:  # Platinum
+            offset = random.randint(0, 30)
+        last_attended.append((TODAY - timedelta(days=offset)).isoformat())
 
-    article_views = rng.integers(0, 300, n)
+    # Tickets purchased
+    tickets = np.array([
+        max(0, int(rng.normal((mem_rank[i] + 1) * 3, 2))) for i in range(n)
+    ])
 
-    mem_mult = {"None": 0.5, "Associate": 1.0, "Full Member": 2.0, "Life Member": 3.0, "Surrey & England": 4.0}
-    ticket_purchases = np.array([max(0, int(rng.normal(mem_mult[m] * 3, 2))) for m in membership_cats])
-    membership_purchases = np.array([max(0, int(rng.normal(mem_mult[m] * 2, 1))) for m in membership_cats])
-    retail_purchases = np.array([max(0, int(rng.normal(mem_mult[m] * 2, 2))) for m in membership_cats])
+    # Spend
+    spend_ranges = {"None": (0, 50), "Bronze": (50, 200), "Silver": (150, 500),
+                    "Gold": (400, 1200), "Platinum": (900, 3000)}
+    spend = np.array([round(rng.uniform(*spend_ranges[m]), 2) for m in mem_types])
 
-    rev_ranges = {
-        "None": (0, 50), "Associate": (50, 200), "Full Member": (200, 600),
-        "Life Member": (500, 1500), "Surrey & England": (1000, 3000),
-    }
-    total_revenues = np.array([round(rng.uniform(*rev_ranges[m]), 2) for m in membership_cats])
+    # Engagement score (0-100 raw, percentile calibrated later)
+    base_eng = mem_rank * 15 + rng.normal(30, 18, n)
+    engagement_scores = np.clip(base_eng, 1, 99).astype(int)
 
-    # Recency offsets: higher tier = more recent (smaller offset from today)
-    recency = {
-        "None": (365 * 2, 365 * 3), "Associate": (180, 365 * 2),
-        "Full Member": (60, 365), "Life Member": (30, 180), "Surrey & England": (0, 60),
-    }
-    att_ranges = {
-        "None": (0, 5), "Associate": (1, 8), "Full Member": (3, 15),
-        "Life Member": (5, 20), "Surrey & England": (8, 25),
-    }
-
-    first_purchase_dates, last_purchase_dates = [], []
-    first_app_opens, last_app_opens = [], []
-    first_email_opens, last_email_opens = [], []
-    join_dates, attendance_frequencies = [], []
-
-    for i, m in enumerate(membership_cats):
-        lo, hi = recency[m]
-
-        # Join date 2010-2024
-        jd_off = random.randint(0, (date(2024, 12, 31) - date(2010, 1, 1)).days)
-        join_dates.append((date(2010, 1, 1) + timedelta(days=jd_off)).isoformat())
-
-        # First purchase 2018-2023
-        fp_off = random.randint(0, (date(2023, 12, 31) - date(2018, 1, 1)).days)
-        fp = date(2018, 1, 1) + timedelta(days=fp_off)
-        first_purchase_dates.append(fp.isoformat())
-
-        lp_off = random.randint(int(lo), int(hi))
-        lp = TODAY - timedelta(days=lp_off)
-        lp = max(lp, fp + timedelta(days=30))
-        last_purchase_dates.append(lp.isoformat())
-
-        # App dates
-        if has_app[i] == "Yes":
-            fa_off = random.randint(0, (date(2024, 12, 31) - date(2020, 1, 1)).days)
-            fa = date(2020, 1, 1) + timedelta(days=fa_off)
-            first_app_opens.append(fa.isoformat())
-            la_off = random.randint(int(lo * 0.3), int(max(lo * 0.3 + 30, hi * 0.5)))
-            la = TODAY - timedelta(days=la_off)
-            la = max(la, fa + timedelta(days=7))
-            last_app_opens.append(la.isoformat())
+    # Channel preference
+    channel_prefs = []
+    for i, age in enumerate(ages):
+        if age < 25:
+            channel_prefs.append(rng.choice(["Push Notification", "Social", "SMS"], p=[0.45, 0.40, 0.15]))
+        elif age < 40:
+            channel_prefs.append(rng.choice(["Email", "Push Notification", "Social"], p=[0.40, 0.35, 0.25]))
         else:
-            first_app_opens.append("")
-            last_app_opens.append("")
+            channel_prefs.append(rng.choice(["Email", "SMS", "Direct Mail"], p=[0.55, 0.30, 0.15]))
 
-        # Email dates
-        fe_off = random.randint(0, (date(2023, 12, 31) - date(2018, 1, 1)).days)
-        fe = date(2018, 1, 1) + timedelta(days=fe_off)
-        first_email_opens.append(fe.isoformat())
-        le_off = random.randint(int(lo * 0.2), int(max(lo * 0.2 + 10, hi * 0.7)))
-        le = TODAY - timedelta(days=le_off)
-        le = max(le, fe + timedelta(days=7))
-        last_email_opens.append(le.isoformat())
-
-        alo, ahi = att_ranges[m]
-        attendance_frequencies.append(random.randint(alo, ahi))
-
-    match_prefs = rng.choice(["T20", "County Championship", "The Hundred", "All Formats"], n, p=[0.30, 0.30, 0.20, 0.20])
-    fav_players = rng.choice(PLAYERS, n)
-    preferred_stands = rng.choice(["OCS Stand", "Pavilion", "Bedser Stand", "Peter May Stand"], n)
-    travel_methods = rng.choice(["Car", "Train", "Walk", "Bus"], n, p=[0.40, 0.35, 0.15, 0.10])
-    season_ticket_years = np.clip(rng.normal(5, 6, n).astype(int), 0, 30)
-    hospitality_interest = rng.choice(["Yes", "No"], n, p=[0.25, 0.75])
-    corporate_package = rng.choice(["Yes", "No"], n, p=[0.15, 0.85])
+    # Favourite player — mix of football and cricket
+    fav_players = []
+    for country in countries:
+        if country in ["India", "Pakistan", "Australia", "Bangladesh", "Sri Lanka",
+                       "New Zealand", "South Africa"]:
+            pool = CRICKET_PLAYERS + FOOTBALL_PLAYERS[:4]
+        else:
+            pool = FOOTBALL_PLAYERS + CRICKET_PLAYERS[:4]
+        fav_players.append(random.choice(pool))
 
     return pd.DataFrame({
         "Fan_ID": fan_ids,
         "Age": ages,
         "Gender": genders,
-        "County": counties,
-        "Membership_Category": membership_cats,
-        "Fan_Type": fan_types,
-        "HAS_APP": has_app,
-        "Email_Campaigns_Received": email_campaigns,
-        "Email_Opens": email_opens,
-        "Email_Clicks": email_clicks,
-        "InApp_Campaigns_Received": inapp_campaigns,
-        "InApp_Opens": inapp_opens,
-        "InApp_Clicks": inapp_clicks,
-        "Article_Views": article_views,
-        "Ticket_Purchases": ticket_purchases,
-        "Membership_Purchases": membership_purchases,
-        "Retail_Purchases": retail_purchases,
-        "Total_Revenue": total_revenues,
-        "First_Purchase_Date": first_purchase_dates,
-        "Last_Purchase_Date": last_purchase_dates,
-        "First_App_Open": first_app_opens,
-        "Last_App_Open": last_app_opens,
-        "First_Email_Open": first_email_opens,
-        "Last_Email_Open": last_email_opens,
-        "Join_Date": join_dates,
-        "Match_Type_Preference": match_prefs,
-        "Attendance_Frequency": attendance_frequencies,
+        "Country": countries,
+        "Membership_Type": mem_types,
+        "Last_Attended": last_attended,
+        "Tickets_Purchased": tickets,
+        "Spend": spend,
+        "Engagement_Score": engagement_scores,
+        "Channel_Preference": channel_prefs,
         "Favourite_Player": fav_players,
-        "Preferred_Stand": preferred_stands,
-        "Travel_Method": travel_methods,
-        "Season_Ticket_Years": season_ticket_years,
-        "Hospitality_Interest": hospitality_interest,
-        "Corporate_Package": corporate_package,
     })
 
 
+def generate_template() -> pd.DataFrame:
+    return pd.DataFrame(columns=[
+        "Fan_ID", "Age", "Gender", "Last_Attended", "Tickets_Purchased",
+        "Spend", "Membership_Type", "Engagement_Score", "Channel_Preference",
+        "Country", "Favourite_Player",
+    ])
+
+
 if __name__ == "__main__":
-    df = generate_sample_data(500)
-    df.to_csv("cricintel_fan_sample.csv", index=False)
-    print(f"Generated cricintel_fan_sample.csv — {len(df)} rows, {len(df.columns)} columns")
+    df = generate_sample_data(300)
+    df.to_csv("faniq_sample.csv", index=False)
+    print(f"Generated faniq_sample.csv — {len(df)} rows, {len(df.columns)} columns")
